@@ -91,6 +91,51 @@ func (s *MultiSearchService) Do() (*MultiSearchResult, error) {
 	return ret, nil
 }
 
+func (s *MultiSearchService) DoWithRequest() (*MultiSearchResult, string, error) {
+	// Build url
+	path := "/_msearch"
+
+	// Parameters
+	params := make(url.Values)
+	if s.pretty {
+		params.Set("pretty", fmt.Sprintf("%v", s.pretty))
+	}
+
+	// Set body
+	lines := make([]string, 0)
+	for _, sr := range s.requests {
+		// Set default indices if not specified in the request
+		if !sr.HasIndices() && len(s.indices) > 0 {
+			sr = sr.Index(s.indices...)
+		}
+
+		header, err := json.Marshal(sr.header())
+		if err != nil {
+			return nil, "", err
+		}
+		body, err := json.Marshal(sr.body())
+		if err != nil {
+			return nil, "", err
+		}
+		lines = append(lines, string(header))
+		lines = append(lines, string(body))
+	}
+	body := strings.Join(lines, "\n") + "\n" // Don't forget trailing \n
+
+	// Get response
+	res, err := s.client.PerformRequest("GET", path, params, body)
+	if err != nil {
+		return nil, body, err
+	}
+
+	// Return result
+	ret := new(MultiSearchResult)
+	if err := s.client.decoder.Decode(res.Body, ret); err != nil {
+		return nil, body, err
+	}
+	return ret, body, nil
+}
+
 type MultiSearchResult struct {
 	Responses []*SearchResult `json:"responses,omitempty"`
 }
